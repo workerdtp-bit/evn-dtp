@@ -2,3 +2,5 @@ selenium
 pandas
 webdriver-manager
 openpyxl
+gspread
+google-auth
