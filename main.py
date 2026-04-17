@@ -22,51 +22,81 @@ from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 
-# =========================
-# CONFIG & ENCODING
-# =========================
+# ==========================================
+# CẤU HÌNH HỆ THỐNG & ENCODING
+# ==========================================
 try:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding='utf-8')
-except: pass
+except:
+    pass
 
 processed = 0
 total = 0
 progress_lock = threading.Lock()
+csv_lock = threading.Lock() # Lock dùng chung để ghi file CSV an toàn
 
-# Cấu hình Google Sheets
+# Thông tin Google Sheets (Thay đổi nếu cần)
 SPREADSHEET_ID = "1FVu_-BWCk_c7rjtC5ovq4wSish8U7bx3ay-KhNiYqXY"
 TARGET_SHEET = "upload"
 SERVICE_FILE = "responsive-task-492802-h3-0f08af796138.json"
 
-# =========================
-# 1. SELENIUM DRIVER
-# =========================
+# ==========================================
+# 1. KHỞI TẠO TRÌNH DUYỆT (SELENIUM)
+# ==========================================
 def create_driver(driver_path):
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+    
     service = Service(driver_path)
     return webdriver.Chrome(service=service, options=chrome_options)
 
-# =========================
-# 2. SCRAPE & WORKER
-# =========================
+# ==========================================
+# 2. CÁC HÀM TIỆN ÍCH
+# ==========================================
+def write_to_csv(filename, data, mode='a', header=False):
+    fieldnames = ['Ma_KH', 'Thoi_gian_tra_cuu', 'Ket_qua']
+    with csv_lock:
+        with open(filename, mode, newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            if header:
+                writer.writeheader()
+            writer.writerows(data)
+
+def split_list(data, n):
+    if n <= 0: return [data]
+    k, m = divmod(len(data), n)
+    return [data[i*k + min(i, m):(i+1)*k + min(i+1, m)] for i in range(n)]
+
+# ==========================================
+# 3. LOGIC CÀO DỮ LIỆU (SCRAPER)
+# ==========================================
 def scrape_power_outage(driver, ma_kh):
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         driver.get('https://cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien')
-        input_element = WebDriverWait(driver, 25).until(EC.visibility_of_element_located((By.ID, 'idMaKhachHang')))
+        input_element = WebDriverWait(driver, 25).until(
+            EC.visibility_of_element_located((By.ID, 'idMaKhachHang'))
+        )
+        # Clear dữ liệu cũ trên giao diện bằng JS
         driver.execute_script("document.getElementById('idThongTinLichNgungGiamMaKhachHang').innerHTML = '';")
+        
         input_element.clear()
         input_element.send_keys(ma_kh)
         input_element.send_keys(Keys.RETURN)
-        WebDriverWait(driver, 25).until(lambda d: d.find_element(By.ID, 'idThongTinLichNgungGiamMaKhachHang').text.strip() != "")
-        div = driver.find_element(By.ID, 'idThongTinLichNgungGiamMaKhachHang')
-        return {'Ma_KH': ma_kh, 'Thoi_gian_tra_cuu': current_time, 'Ket_qua': div.text.strip()}
+
+        # Chờ phản hồi từ server
+        WebDriverWait(driver, 25).until(
+            lambda d: d.find_element(By.ID, 'idThongTinLichNgungGiamMaKhachHang').text.strip() != ""
+        )
+        div_content = driver.find_element(By.ID, 'idThongTinLichNgungGiamMaKhachHang').text.strip()
+        return {'Ma_KH': ma_kh, 'Thoi_gian_tra_cuu': current_time, 'Ket_qua': div_content}
     except Exception as e:
         return {'Ma_KH': ma_kh, 'Thoi_gian_tra_cuu': current_time, 'Ket_qua': f"Lỗi: {str(e)}"}
 
@@ -78,25 +108,21 @@ def worker(ma_kh_list, thread_id, output_csv, driver_path):
             result = scrape_power_outage(driver, ma_kh)
             with progress_lock:
                 processed += 1
-                print(f"📊 [{processed}/{total}] Luồng {thread_id}: {ma_kh}")
+                print(f"📊 [{processed}/{total}] Luồng {thread_id}: {ma_kh} - DONE")
+            
             write_to_csv(output_csv, [result])
-            time.sleep(random.uniform(2, 4))
+            time.sleep(random.uniform(2, 4)) # Nghỉ để tránh bị block IP
     finally:
         driver.quit()
 
-def write_to_csv(filename, data, mode='a', header=False):
-    fieldnames = ['Ma_KH', 'Thoi_gian_tra_cuu', 'Ket_qua']
-    with lock_file := threading.Lock():
-        with open(filename, mode, newline='', encoding='utf-8-sig') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            if header: writer.writeheader()
-            writer.writerows(data)
-
-# =========================
-# 3. UPLOAD GOOGLE SHEETS
-# =========================
+# ==========================================
+# 4. XỬ LÝ DỮ LIỆU & ĐẨY GOOGLE SHEETS
+# ==========================================
 def upload_to_sheets(dataframe):
-    print("⏳ Đang kết nối Google Sheets...")
+    if not os.path.exists(SERVICE_FILE):
+        print(f"❌ Không tìm thấy file JSON: {SERVICE_FILE}"); return
+    
+    print("⏳ Đang đẩy dữ liệu lên Google Sheets...")
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_file(SERVICE_FILE, scopes=scope)
@@ -111,24 +137,26 @@ def upload_to_sheets(dataframe):
         worksheet.clear()
         data_to_upload = [dataframe.columns.tolist()] + dataframe.astype(str).values.tolist()
         worksheet.update(range_name="A1", values=data_to_upload, value_input_option="USER_ENTERED")
-        print("✅ Đã cập nhật dữ liệu lên Google Sheets thành công!")
+        print("✅ Đã cập nhật Google Sheets thành công!")
     except Exception as e:
-        print(f"❌ Lỗi Upload Google Sheets: {e}")
+        print(f"❌ Lỗi Google Sheets: {e}")
 
-# =========================
-# 4. PROCESS & MAIN
-# =========================
-def process_and_upload(input_csv):
+def process_and_finalize(input_csv):
     if not os.path.exists(input_csv): return
     df = pd.read_csv(input_csv)
     rows = []
+    
     for _, row in df.iterrows():
+        ma_kh = row.get('Ma_KH', '')
+        time_query = row.get('Thoi_gian_tra_cuu', '')
         text = str(row.get('Ket_qua', ''))
+
         kh_match = re.search(r"KHÁCH HÀNG:\s*(.+)", text, re.IGNORECASE)
         dc_match = re.search(r"ĐỊA CHỈ:\s*(.+)", text, re.IGNORECASE)
         khach_hang = kh_match.group(1).strip() if kh_match else ""
         dia_chi = dc_match.group(1).strip() if dc_match else ""
 
+        # Chia khối lịch nếu một khách hàng có nhiều lịch cúp điện
         lich_blocks = re.split(r"(?=MÃ.*LỊCH)", text)
         for block in lich_blocks:
             ma_lich_match = re.search(r"MÃ.*LỊCH:\s*(\d+)", block, re.IGNORECASE)
@@ -137,42 +165,55 @@ def process_and_upload(input_csv):
 
             if ma_lich_match and tg_match:
                 rows.append([
-                    row.get('Ma_KH'), row.get('Thoi_gian_tra_cuu'), khach_hang, dia_chi, 
+                    ma_kh, time_query, khach_hang, dia_chi, 
                     ma_lich_match.group(1), tg_match.group(2).strip(), tg_match.group(1).strip(),
                     tg_match.group(4).strip(), tg_match.group(3).strip(),
                     ly_do_match.group(1).strip() if ly_do_match else ""
                 ])
     
     result_df = pd.DataFrame(rows, columns=[
-        "MA_KH", "Tra cuu luc", "Khach hang", "Dia chi", "Ma lich",
-        "Ngay BD", "Gio BD", "Ngay KT", "Gio KT", "Ly do"
+        "MA_KH", "Thoi_gian_quet", "Khach_hang", "Dia_chi", "Ma_lich",
+        "Ngay_BD", "Gio_BD", "Ngay_KT", "Gio_KT", "Ly_do"
     ])
     
-    # Xuất file Excel dự phòng
     result_df.to_excel("output.xlsx", index=False)
-    # Đẩy lên Google Sheets
     upload_to_sheets(result_df)
 
+# ==========================================
+# 5. CHƯƠNG TRÌNH CHÍNH
+# ==========================================
 if __name__ == '__main__':
     csv_raw = "datasauget.csv"
     makh_file = "makh_list.csv"
-    ma_kh_all = []
-    if os.path.exists(makh_file):
-        with open(makh_file, 'r', encoding='utf-8') as f:
-            ma_kh_all = [row[0].strip() for row in csv.reader(f) if row and row[0].strip()]
+
+    # Đọc danh sách mã KH
+    if not os.path.exists(makh_file):
+        print(f"❌ Không thấy file {makh_file}"); exit()
+        
+    with open(makh_file, 'r', encoding='utf-8') as f:
+        ma_kh_all = [r[0].strip() for r in csv.reader(f) if r and r[0].strip()]
 
     if not ma_kh_all:
-        print("❌ Ko có mã KH"); exit()
+        print("❌ Danh sách mã khách hàng trống!"); exit()
 
     total = len(ma_kh_all)
+    print(f"🚀 Bắt đầu quét {total} mã khách hàng...")
+    
+    # Bước cài đặt Driver 1 lần duy nhất để tránh xung đột đa luồng
     d_path = ChromeDriverManager().install()
+
+    # Khởi tạo file CSV
     write_to_csv(csv_raw, [], mode='w', header=True)
     
-    n_threads = 3
-    chunks = [ma_kh_all[i::n_threads] for i in range(n_threads)]
-    with ThreadPoolExecutor(max_workers=n_threads) as executor:
-        futures = [executor.submit(worker, chunks[i], i+1, csv_raw, d_path) for i in range(n_threads)]
-        for f in as_completed(futures): f.result()
+    # Chia luồng (3 luồng để đảm bảo an toàn trên GitHub Actions)
+    num_threads = 3
+    chunks = split_list(ma_kh_all, num_threads)
 
-    print("🏁 Xử lý Regex & Upload...")
-    process_and_upload(csv_raw)
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = [executor.submit(worker, chunks[i], i+1, csv_raw, d_path) for i in range(num_threads)]
+        for f in as_completed(futures):
+            f.result()
+
+    print("🏁 Quét xong. Đang xử lý dữ liệu và upload...")
+    process_and_finalize(csv_raw)
+    print("✨ HOÀN TẤT.")
