@@ -6,9 +6,8 @@ import time
 import threading
 import random
 import re
-import io
-import sys
 import json
+import sys
 import gspread
 from google.oauth2.service_account import Credentials
 from gspread.exceptions import WorksheetNotFound
@@ -37,11 +36,9 @@ total = 0
 progress_lock = threading.Lock()
 csv_lock = threading.Lock()
 
-# Cấu hình file và ID
+# THÔNG TIN GOOGLE SHEET
 SPREADSHEET_ID = "1FVu_-BWCk_c7rjtC5ovq4wSish8U7bx3ay-KhNiYqXY"
 TARGET_SHEET = "upload"
-# Tên file JSON bạn đã upload lên GitHub
-JSON_FILE = "responsive-task-492802-h3-0f08af796138.json"
 
 # ==========================================
 # 1. SELENIUM SETUP
@@ -58,7 +55,7 @@ def create_driver(driver_path):
     return webdriver.Chrome(service=service, options=chrome_options)
 
 # ==========================================
-# 2. LOGIC CÀO DỮ LIỆU
+# 2. SCRAPE & WORKER
 # ==========================================
 def scrape_power_outage(driver, ma_kh):
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -98,19 +95,20 @@ def write_to_csv(filename, data, mode='a', header=False):
             writer.writerows(data)
 
 # ==========================================
-# 3. UPLOAD GOOGLE SHEETS (FIXED)
+# 3. UPLOAD GOOGLE SHEETS (SỬ DỤNG SECRETS)
 # ==========================================
 def upload_to_sheets(dataframe):
-    print(f"⏳ Đang kết nối Google Sheets bằng file {JSON_FILE}...")
+    print("⏳ Đang kết nối Google Sheets qua GitHub Secrets...")
     try:
-        if not os.path.exists(JSON_FILE):
-            print(f"❌ Lỗi: Không tìm thấy file {JSON_FILE} trong thư mục!")
+        # Đọc dữ liệu JSON từ biến môi trường do GitHub Actions truyền vào
+        gcp_json_str = os.getenv('GCP_JSON')
+        if not gcp_json_str:
+            print("❌ Lỗi: Không tìm thấy biến môi trường GCP_JSON. Hãy kiểm tra lại GitHub Secrets!")
             return
 
+        info = json.loads(gcp_json_str)
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        
-        # Nạp trực tiếp từ file JSON để tránh lỗi JWT Signature do copy-paste chuỗi
-        creds = Credentials.from_service_account_file(JSON_FILE, scopes=scope)
+        creds = Credentials.from_service_account_info(info, scopes=scope)
         client = gspread.authorize(creds)
         spreadsheet = client.open_by_key(SPREADSHEET_ID)
         
@@ -124,10 +122,10 @@ def upload_to_sheets(dataframe):
         worksheet.update(range_name="A1", values=data_to_upload, value_input_option="USER_ENTERED")
         print("✅ Đã cập nhật Google Sheets thành công!")
     except Exception as e:
-        print(f"❌ Lỗi Google Sheets chi tiết: {e}")
+        print(f"❌ Lỗi Google Sheets: {e}")
 
 # ==========================================
-# 4. XỬ LÝ DỮ LIỆU REGEX
+# 4. XỬ LÝ & KẾT THÚC
 # ==========================================
 def process_and_finalize(input_csv):
     if not os.path.exists(input_csv): return
@@ -163,19 +161,17 @@ def process_and_finalize(input_csv):
     result_df.to_excel("output.xlsx", index=False)
     upload_to_sheets(result_df)
 
-# ==========================================
-# 5. MAIN
-# ==========================================
 if __name__ == '__main__':
     csv_raw = "datasauget.csv"
     makh_file = "makh_list.csv"
 
     if not os.path.exists(makh_file):
-        print("❌ Không tìm thấy makh_list.csv"); exit()
-        
+        print(f"❌ File {makh_file} không tồn tại!"); exit()
+
     with open(makh_file, 'r', encoding='utf-8') as f:
         ma_kh_all = [r[0].strip() for r in csv.reader(f) if r and r[0].strip()]
 
+    if not ma_kh_all: exit()
     total = len(ma_kh_all)
     d_path = ChromeDriverManager().install()
     write_to_csv(csv_raw, [], mode='w', header=True)
@@ -187,3 +183,4 @@ if __name__ == '__main__':
         for f in as_completed(futures): f.result()
 
     process_and_finalize(csv_raw)
+    print("✨ TẤT CẢ HOÀN TẤT.")
