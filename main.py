@@ -108,7 +108,7 @@ def worker(data, driver_path, output):
 
             with lock:
                 processed += 1
-                print(f"📊 {processed}/{total} | {ma_kh}")
+                print(f"📊 {processed}/{total} | {ma_kh}", flush=True)
 
             if len(buffer) >= 5:
                 write_csv(output, buffer)
