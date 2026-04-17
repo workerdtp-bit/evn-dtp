@@ -1,9 +1,9 @@
 name: EVN Scraper & Google Sheets Upload
 
 on:
-  workflow_dispatch: # Cho phép bạn bấm nút chạy thủ công bất cứ lúc nào
+  workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *' # Tự động chạy mỗi ngày lúc 7h sáng (giờ Việt Nam)
+    - cron: '0 0 * * *'
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
         run: python main.py
 
       - name: Upload Result Artifacts
-        if: always() # Luôn chạy bước này kể cả khi code gặp lỗi để bạn kiểm tra log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ket-qua-cuoi-cung
