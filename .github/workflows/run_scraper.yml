@@ -1,31 +1,36 @@
-name: EVN Scraper Daily
+name: EVN Scraper & Google Sheets Upload
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Cho phép bạn bấm nút chạy thủ công bất cứ lúc nào
   schedule:
-    - cron: '0 0 * * *' # Chạy mỗi ngày lúc 7h sáng VN
+    - cron: '0 0 * * *' # Tự động chạy mỗi ngày lúc 7h sáng (giờ Việt Nam)
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install selenium pandas webdriver-manager openpyxl gspread google-auth
 
-      - name: Run Scraper
+      - name: Run Scraper and Upload to Google Sheets
         run: python main.py
 
-      - name: Upload Result
+      - name: Upload Result Artifacts
+        if: always() # Luôn chạy bước này kể cả khi code gặp lỗi để bạn kiểm tra log
         uses: actions/upload-artifact@v4
         with:
-          name: ket-qua-tra-cuu
-          path: datasauget.xlsx
+          name: ket-qua-cuoi-cung
+          path: |
+            datasauget.csv
+            output.xlsx
