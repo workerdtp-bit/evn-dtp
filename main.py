@@ -23,7 +23,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 
 # ==========================================
-# CẤU HÌNH & ENCODING
+# CẤU HÌNH CHUNG
 # ==========================================
 try:
     if hasattr(sys.stdout, "reconfigure"):
@@ -95,15 +95,15 @@ def write_to_csv(filename, data, mode='a', header=False):
             writer.writerows(data)
 
 # ==========================================
-# 3. UPLOAD GOOGLE SHEETS (SỬ DỤNG SECRETS)
+# 3. UPLOAD GOOGLE SHEETS (DÙNG SECRET)
 # ==========================================
 def upload_to_sheets(dataframe):
     print("⏳ Đang kết nối Google Sheets qua GitHub Secrets...")
     try:
-        # Đọc dữ liệu JSON từ biến môi trường do GitHub Actions truyền vào
+        # Đọc dữ liệu JSON từ GitHub Secret thông qua biến môi trường
         gcp_json_str = os.getenv('GCP_JSON')
         if not gcp_json_str:
-            print("❌ Lỗi: Không tìm thấy biến môi trường GCP_JSON. Hãy kiểm tra lại GitHub Secrets!")
+            print("❌ Lỗi: Không tìm thấy Secret GCP_JSON. Hãy kiểm tra lại bước thiết lập Secret!")
             return
 
         info = json.loads(gcp_json_str)
@@ -122,10 +122,10 @@ def upload_to_sheets(dataframe):
         worksheet.update(range_name="A1", values=data_to_upload, value_input_option="USER_ENTERED")
         print("✅ Đã cập nhật Google Sheets thành công!")
     except Exception as e:
-        print(f"❌ Lỗi Google Sheets: {e}")
+        print(f"❌ Lỗi Google Sheets chi tiết: {e}")
 
 # ==========================================
-# 4. XỬ LÝ & KẾT THÚC
+# 4. XỬ LÝ DỮ LIỆU REGEX
 # ==========================================
 def process_and_finalize(input_csv):
     if not os.path.exists(input_csv): return
@@ -166,7 +166,7 @@ if __name__ == '__main__':
     makh_file = "makh_list.csv"
 
     if not os.path.exists(makh_file):
-        print(f"❌ File {makh_file} không tồn tại!"); exit()
+        print(f"❌ Không tìm thấy {makh_file}"); exit()
 
     with open(makh_file, 'r', encoding='utf-8') as f:
         ma_kh_all = [r[0].strip() for r in csv.reader(f) if r and r[0].strip()]
@@ -183,4 +183,4 @@ if __name__ == '__main__':
         for f in as_completed(futures): f.result()
 
     process_and_finalize(csv_raw)
-    print("✨ TẤT CẢ HOÀN TẤT.")
+    print("🏁 HOÀN TẤT.")
