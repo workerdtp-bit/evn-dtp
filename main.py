@@ -22,9 +22,7 @@ from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 
-# ==========================================
-# CONFIG
-# ==========================================
+# ================= CONFIG =================
 try:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding='utf-8')
@@ -39,9 +37,7 @@ csv_lock = threading.Lock()
 SPREADSHEET_ID = "1FVu_-BWCk_c7rjtC5ovq4wSish8U7bx3ay-KhNiYqXY"
 TARGET_SHEET = "upload"
 
-# ==========================================
-# DRIVER
-# ==========================================
+# ================= DRIVER =================
 def create_driver(driver_path):
     options = Options()
     options.add_argument("--headless=new")
@@ -50,27 +46,22 @@ def create_driver(driver_path):
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    )
 
     service = Service(driver_path)
     driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(30)
     return driver
 
-# ==========================================
-# SCRAPER (có retry)
-# ==========================================
+# ================= SCRAPE =================
 def scrape(driver, ma_kh):
-    for _ in range(2):
+    for _ in range(2):  # retry
         try:
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            driver.get('https://cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien')
+            driver.get("https://cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien")
 
             input_el = WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.ID, 'idMaKhachHang'))
+                EC.presence_of_element_located((By.ID, "idMaKhachHang"))
             )
 
             input_el.clear()
@@ -79,15 +70,14 @@ def scrape(driver, ma_kh):
 
             WebDriverWait(driver, 20).until(
                 EC.presence_of_element_located(
-                    (By.ID, 'idThongTinLichNgungGiamMaKhachHang')
+                    (By.ID, "idThongTinLichNgungGiamMaKhachHang")
                 )
             )
 
             time.sleep(2)
 
             content = driver.find_element(
-                By.ID,
-                'idThongTinLichNgungGiamMaKhachHang'
+                By.ID, "idThongTinLichNgungGiamMaKhachHang"
             ).text.strip()
 
             return {
@@ -105,9 +95,7 @@ def scrape(driver, ma_kh):
         "Noi_dung": "Lỗi"
     }
 
-# ==========================================
-# WORKER (buffer ghi file)
-# ==========================================
+# ================= WORKER =================
 def worker(data, driver_path, output):
     global processed
     driver = create_driver(driver_path)
@@ -134,9 +122,7 @@ def worker(data, driver_path, output):
     finally:
         driver.quit()
 
-# ==========================================
-# CSV
-# ==========================================
+# ================= CSV =================
 def write_csv(file, rows, mode='a', header=False):
     with csv_lock:
         with open(file, mode, newline='', encoding='utf-8-sig') as f:
@@ -148,12 +134,9 @@ def write_csv(file, rows, mode='a', header=False):
                 writer.writeheader()
             writer.writerows(rows)
 
-# ==========================================
-# PARSE DATA
-# ==========================================
+# ================= PROCESS =================
 def process(input_csv):
     df = pd.read_csv(input_csv)
-
     rows = []
 
     for _, row in df.iterrows():
@@ -169,22 +152,15 @@ def process(input_csv):
 
         for b in blocks:
             ma = re.search(r"MÃ.*LỊCH:\s*(\d+)", b)
-            tg = re.search(
-                r"từ (.+?) ngày (.+?) đến (.+?) ngày (.+)",
-                b
-            )
+            tg = re.search(r"từ (.+?) ngày (.+?) đến (.+?) ngày (.+)", b)
             lydo = re.search(r"LÝ DO.*:\s*(.+)", b)
 
             if ma and tg:
                 rows.append([
-                    row["Ma_KH"],
-                    kh,
-                    dc,
+                    row["Ma_KH"], kh, dc,
                     ma.group(1),
-                    tg.group(2),
-                    tg.group(1),
-                    tg.group(4),
-                    tg.group(3),
+                    tg.group(2), tg.group(1),
+                    tg.group(4), tg.group(3),
                     lydo.group(1) if lydo else ""
                 ])
 
@@ -197,9 +173,7 @@ def process(input_csv):
     df2.to_excel("output.xlsx", index=False)
     upload_sheet(df2)
 
-# ==========================================
-# GOOGLE SHEET
-# ==========================================
+# ================= GOOGLE SHEETS =================
 def upload_sheet(df):
     try:
         raw = os.getenv("GCP_JSON")
@@ -232,9 +206,7 @@ def upload_sheet(df):
     except Exception as e:
         print("❌ Sheet lỗi:", e)
 
-# ==========================================
-# MAIN
-# ==========================================
+# ================= MAIN =================
 if __name__ == "__main__":
     file_input = "makh_list.csv"
     file_raw = "raw.csv"
@@ -246,8 +218,7 @@ if __name__ == "__main__":
     with open(file_input, encoding="utf-8") as f:
         data = [r[0] for r in csv.reader(f) if r]
 
-    global total
-    total = len(data)
+    total = len(data)   # ✅ KHÔNG cần global
 
     driver_path = ChromeDriverManager().install()
 
