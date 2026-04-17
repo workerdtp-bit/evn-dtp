@@ -24,6 +24,8 @@ jobs:
           pip install selenium pandas webdriver-manager openpyxl gspread google-auth
 
       - name: Run Scraper and Upload to Google Sheets
+        env:
+          GCP_JSON: ${{ secrets.GCP_JSON }} # KHÔNG ĐƯỢC THIẾU DÒNG NÀY
         run: python main.py
 
       - name: Upload Result Artifacts
