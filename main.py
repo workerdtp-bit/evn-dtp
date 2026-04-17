@@ -41,8 +41,8 @@ SPREADSHEET_ID = "1FVu_-BWCk_c7rjtC5ovq4wSish8U7bx3ay-KhNiYqXY"
 TARGET_SHEET = "upload"
 
 # THÔNG TIN XÁC THỰC GOOGLE
-# Sử dụng biến RAW_PRIVATE_KEY để xử lý triệt để lỗi xuống dòng \n gây lỗi JWT Signature
-RAW_PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----
+# Sử dụng biến RAW_PRIVATE_KEY với định dạng chuỗi thô (r"") để tránh lỗi ký tự đặc biệt
+RAW_PRIVATE_KEY = r"""-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDlIAsWlrWSoCUi
 CPdqWo2x0IBGXv1S7rFCZgTOD5wb17OfC+vA6R7cvLJ2C7EdCf96oOa7ssEJudxV
 ZvpZfv4nAph2H5lfyg/8W8KdLncA0OO6UAzJqMBJfS10RM5d3NrMqO7JcEo8LOkn
@@ -75,7 +75,8 @@ GOOGLE_INFO = {
   "type": "service_account",
   "project_id": "responsive-task-492802-h3",
   "private_key_id": "0f08af7961386cb5c1df97577f7c0dca3038d83f",
-  "private_key": RAW_PRIVATE_KEY,
+  # Fix lỗi định dạng PEM bằng cách đảm bảo xuống dòng \n chuẩn
+  "private_key": RAW_PRIVATE_KEY.strip().replace("\\n", "\n"),
   "client_email": "evn-danhht@responsive-task-492802-h3.iam.gserviceaccount.com",
   "client_id": "117157456897680448434",
   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
