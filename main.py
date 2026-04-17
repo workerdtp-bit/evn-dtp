@@ -98,18 +98,27 @@ def write_to_csv(filename, data, mode='a', header=False):
 # 3. UPLOAD GOOGLE SHEETS (DÙNG SECRET)
 # ==========================================
 def upload_to_sheets(dataframe):
-    print("⏳ Đang kết nối Google Sheets qua GitHub Secrets...")
+    print("⏳ Đang kết nối Google Sheets và vệ sinh khóa bí mật...")
     try:
-        # Đọc dữ liệu JSON từ GitHub Secret thông qua biến môi trường
         gcp_json_str = os.getenv('GCP_JSON')
         if not gcp_json_str:
-            print("❌ Lỗi: Không tìm thấy Secret GCP_JSON. Hãy kiểm tra lại bước thiết lập Secret!")
+            print("❌ Lỗi: Không tìm thấy Secret GCP_JSON!")
             return
 
+        # Bước quan trọng: Ép kiểu và xử lý lỗi xuống dòng bị nhân đôi
+        # Sửa lỗi phổ biến khi copy-paste làm \n biến thành \\n
+        gcp_json_str = gcp_json_str.replace("\\\\n", "\\n")
+        
         info = json.loads(gcp_json_str)
+        
+        # Đảm bảo private_key có định dạng xuống dòng chuẩn xác
+        if "private_key" in info:
+            info["private_key"] = info["private_key"].replace("\\n", "\n")
+
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(info, scopes=scope)
         client = gspread.authorize(creds)
+        
         spreadsheet = client.open_by_key(SPREADSHEET_ID)
         
         try:
