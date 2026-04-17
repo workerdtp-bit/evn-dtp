@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
     write_csv(file_raw, [], mode="w", header=True)
 
-    threads = 3
+    threads = 4
     chunks = [data[i::threads] for i in range(threads)]
 
     with ThreadPoolExecutor(max_workers=threads) as ex:
