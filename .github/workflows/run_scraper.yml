@@ -6,7 +6,7 @@ on:
     # Chạy T7 để đảm bảo cập nhật dữ liệu liên tục
     - cron: '20 04 * * 6'
   workflow_dispatch: # Cho phép bạn bấm nút "Run workflow" để chạy tay bất cứ lúc nào
-  env:
+env:
   # Ép toàn bộ các Action sử dụng Node.js 24 để hết cảnh báo
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
