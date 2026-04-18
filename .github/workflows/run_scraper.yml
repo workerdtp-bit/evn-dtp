@@ -5,28 +5,29 @@ on:
     # 11:10 UTC tương ứng với 18:10 giờ Việt Nam (GMT+7)
     # Chạy T7 để đảm bảo cập nhật dữ liệu liên tục
     - cron: '20 04 * * 6'
-  workflow_dispatch: # Cho phép bạn bấm nút "Run workflow" để chạy tay bất cứ lúc nào
-
+  workflow_dispatch: # Cho phép bấm nút "Run workflow" để chạy tay
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Đặt giới hạn 4 tiếng (240 phút) để an toàn cho 2000 mã, 
-    # tránh trường hợp script bị treo làm cạn kiệt phút của GitHub.
+    # Đặt giới hạn 4 tiếng (240 phút) để an toàn
     timeout-minutes: 240 
+    
     env:
-  # Ép toàn bộ các Action sử dụng Node.js 24 để hết cảnh báo
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      # Ép các Action chạy trên Node.js 24 để hết cảnh báo vàng
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        # Cập nhật lên v4.2.2 để hỗ trợ Node 24
+        uses: actions/checkout@v4.2.2
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        # Cập nhật lên v5.4.0 để tương thích hoàn toàn
+        uses: actions/setup-python@v5.4.0
         with:
           python-version: '3.10'
-          # Cache pip giúp các lần chạy sau cài đặt thư viện nhanh hơn
+          # Cache pip giúp các lần chạy sau nhanh hơn
           cache: 'pip' 
 
       - name: Install dependencies
@@ -37,15 +38,16 @@ jobs:
       - name: Run scraper
         env:
           GCP_JSON: ${{ secrets.GCP_JSON }}
-        # Thêm biến PYTHONUNBUFFERED để log (ví dụ: 1/2000) hiện ra ngay lập tức
+        # Thêm biến PYTHONUNBUFFERED để log hiện ra ngay lập tức
         run: |
           export PYTHONUNBUFFERED=1
           python main.py
 
       - name: Upload results
-        # Luôn chạy bước này kể cả khi bước cào dữ liệu gặp lỗi giữa chừng
+        # Luôn chạy bước này kể cả khi script cào dữ liệu gặp lỗi
         if: always() 
-        uses: actions/upload-artifact@v4
+        # Cập nhật lên v4.6.0 để xóa cảnh báo deprecation
+        uses: actions/upload-artifact@v4.6.0
         with:
           name: evn-result
           path: |
