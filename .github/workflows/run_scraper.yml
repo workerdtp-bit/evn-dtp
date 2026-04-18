@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 240 
     env:
   # Ép toàn bộ các Action sử dụng Node.js 24 để hết cảnh báo
-    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
     steps:
       - name: Checkout code
