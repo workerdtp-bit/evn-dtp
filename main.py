@@ -34,7 +34,7 @@ total = 0
 lock = threading.Lock()
 csv_lock = threading.Lock()
 
-SPREADSHEET_ID = "1FVu_-BWCk_c7rjtC5ovq4wSish8U7bx3ay-KhNiYqXY"
+SPREADSHEET_ID = "1tF_Oy6ZKJpNSAj9ElrUZIyHrw-ri4EPiESE_12CCHCw"
 TARGET_SHEET = "upload"
 
 # ================= DRIVER =================
@@ -54,10 +54,11 @@ def create_driver(driver_path):
 
 # ================= SCRAPE =================
 def scrape(driver, ma_kh):
-    for _ in range(2):  # retry
+    # Ghi nhận thời gian bắt đầu tra cứu cho mã này
+    thoi_gian_tra_cuu = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    for _ in range(2):  # retry 2 lần nếu lỗi
         try:
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
             driver.get("https://cskh.evnspc.vn/TraCuu/LichNgungGiamCungCapDien")
 
             input_el = WebDriverWait(driver, 20).until(
@@ -68,13 +69,12 @@ def scrape(driver, ma_kh):
             input_el.send_keys(ma_kh)
             input_el.send_keys(Keys.RETURN)
 
+            # Chờ bảng kết quả xuất hiện
             WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located(
-                    (By.ID, "idThongTinLichNgungGiamMaKhachHang")
-                )
+                EC.presence_of_element_located((By.ID, "idThongTinLichNgungGiamMaKhachHang"))
             )
 
-            time.sleep(2)
+            time.sleep(2) # Chờ dữ liệu render xong hoàn toàn
 
             content = driver.find_element(
                 By.ID, "idThongTinLichNgungGiamMaKhachHang"
@@ -82,7 +82,7 @@ def scrape(driver, ma_kh):
 
             return {
                 "Ma_KH": ma_kh,
-                "Thoi_gian": now,
+                "Thoi_gian": thoi_gian_tra_cuu,
                 "Noi_dung": content
             }
 
@@ -91,8 +91,8 @@ def scrape(driver, ma_kh):
 
     return {
         "Ma_KH": ma_kh,
-        "Thoi_gian": now,
-        "Noi_dung": "Lỗi"
+        "Thoi_gian": thoi_gian_tra_cuu,
+        "Noi_dung": "Lỗi: Không tìm thấy dữ liệu hoặc timeout"
     }
 
 # ================= WORKER =================
@@ -136,22 +136,27 @@ def write_csv(file, rows, mode='a', header=False):
 
 # ================= PROCESS =================
 def process(input_csv):
+    print("🧹 Đang xử lý dữ liệu thô...")
     df = pd.read_csv(input_csv)
     rows = []
 
     for _, row in df.iterrows():
         text = str(row["Noi_dung"])
+        tg_tra_cuu = row["Thoi_gian"]
 
-        kh = re.search(r"KHÁCH HÀNG:\s*(.+)", text)
-        dc = re.search(r"ĐỊA CHỈ:\s*(.+)", text)
+        # Tìm tên khách hàng và địa chỉ (thường nằm ở đầu văn bản)
+        kh_match = re.search(r"KHÁCH HÀNG:\s*(.+)", text)
+        dc_match = re.search(r"ĐỊA CHỈ:\s*(.+)", text)
 
-        kh = kh.group(1).strip() if kh else ""
-        dc = dc.group(1).strip() if dc else ""
+        kh = kh_match.group(1).strip() if kh_match else ""
+        dc = dc_match.group(1).strip() if dc_match else ""
 
+        # Chia nhỏ các block nếu một khách hàng có nhiều lịch cúp điện
         blocks = re.split(r"(?=MÃ.*?LỊCH)", text, flags=re.IGNORECASE)
 
         for b in blocks:
             ma = re.search(r"MÃ.*LỊCH:\s*(\d+)", b)
+            # Regex bắt định dạng: từ 07g00 ngày 20/05/2024 đến 17g00 ngày 20/05/2024
             tg = re.search(r"từ (.+?) ngày (.+?) đến (.+?) ngày (.+)", b)
             lydo = re.search(r"LÝ DO.*:\s*(.+)", b)
 
@@ -161,24 +166,33 @@ def process(input_csv):
                     ma.group(1),
                     tg.group(2), tg.group(1),
                     tg.group(4), tg.group(3),
-                    lydo.group(1) if lydo else ""
+                    lydo.group(1).strip() if lydo else "",
+                    tg_tra_cuu
                 ])
 
     df2 = pd.DataFrame(rows, columns=[
         "Ma_KH", "Khach_hang", "Dia_chi",
         "Ma_lich", "Ngay_BD", "Gio_BD",
-        "Ngay_KT", "Gio_KT", "Ly_do"
+        "Ngay_KT", "Gio_KT", "Ly_do",
+        "Thoi_gian_tra_cuu"
     ])
 
+    # Lưu file Excel cục bộ
     df2.to_excel("output.xlsx", index=False)
+    print("📁 Đã xuất file output.xlsx")
+    
+    # Upload lên Google Sheets
     upload_sheet(df2)
 
 # ================= GOOGLE SHEETS =================
 def upload_sheet(df):
     try:
         raw = os.getenv("GCP_JSON")
-        raw = raw.replace("\\\\n", "\\n")
+        if not raw:
+            print("⚠️ Bỏ qua upload: Thiếu biến môi trường GCP_JSON")
+            return
 
+        raw = raw.replace("\\\\n", "\\n")
         info = json.loads(raw)
         info["private_key"] = info["private_key"].replace("\\n", "\n")
 
@@ -198,13 +212,14 @@ def upload_sheet(df):
             ws = sheet.add_worksheet(title=TARGET_SHEET, rows="1000", cols="20")
 
         ws.clear()
+        # Chuyển DataFrame thành list of lists để update
         data = [df.columns.tolist()] + df.astype(str).values.tolist()
         ws.update(range_name="A1", values=data)
 
-        print("✅ Upload Google Sheets OK")
+        print("✅ Upload Google Sheets thành công!")
 
     except Exception as e:
-        print("❌ Sheet lỗi:", e)
+        print("❌ Lỗi Google Sheets:", e)
 
 # ================= MAIN =================
 if __name__ == "__main__":
@@ -212,26 +227,38 @@ if __name__ == "__main__":
     file_raw = "raw.csv"
 
     if not os.path.exists(file_input):
-        print("❌ Thiếu file makh_list.csv")
-        exit()
+        print(f"❌ Không tìm thấy file {file_input}. Vui lòng chuẩn bị danh sách mã khách hàng.")
+        sys.exit()
 
     with open(file_input, encoding="utf-8") as f:
         data = [r[0] for r in csv.reader(f) if r]
 
-    total = len(data)   # ✅ KHÔNG cần global
+    total = len(data)
+    print(f"🚀 Bắt đầu cào {total} mã khách hàng với 4 luồng...")
 
     driver_path = ChromeDriverManager().install()
 
+    # Khởi tạo file raw mới với tiêu đề
     write_csv(file_raw, [], mode="w", header=True)
 
     threads = 4
+    # Chia nhỏ data cho các luồng
     chunks = [data[i::threads] for i in range(threads)]
+
+    start_time = time.time()
 
     with ThreadPoolExecutor(max_workers=threads) as ex:
         futures = [ex.submit(worker, c, driver_path, file_raw) for c in chunks]
         for f in as_completed(futures):
-            f.result()
+            try:
+                f.result()
+            except Exception as e:
+                print(f"❌ Luồng gặp lỗi: {e}")
 
-    process(file_raw)
+    # Xử lý file raw thành file kết quả cuối cùng
+    if os.path.exists(file_raw):
+        process(file_raw)
 
-    print("🏁 DONE")
+    end_time = time.time()
+    duration = round(end_time - start_time, 2)
+    print(f"🏁 HOÀN THÀNH trong {duration} giây.")
