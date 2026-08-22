@@ -20,11 +20,11 @@ jobs:
     steps:
       - name: Checkout code
         # Cập nhật lên v4.2.2 để hỗ trợ Node 24
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Python
         # Cập nhật lên v5.4.0 để tương thích hoàn toàn
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           # Cache pip giúp các lần chạy sau nhanh hơn
@@ -47,7 +47,7 @@ jobs:
         # Luôn chạy bước này kể cả khi script cào dữ liệu gặp lỗi
         if: always() 
         # Cập nhật lên v4.6.0 để xóa cảnh báo deprecation
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: evn-result
           path: |
