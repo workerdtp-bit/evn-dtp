@@ -12,6 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     # Đặt giới hạn 4 tiếng (240 phút) để an toàn
     timeout-minutes: 240 
+
+    # Cấp quyền Ghi cho GITHUB_TOKEN để Keepalive Action có thể tự động commit
+    permissions:
+      contents: write
+      actions: write
     
     env:
       # Ép các Action chạy trên Node.js 24 để hết cảnh báo vàng
@@ -53,3 +58,10 @@ jobs:
           path: |
             datasauget.csv
             output.xlsx
+
+      # Tự động tạo commit giữ cho Workflow không bị dừng sau 60 ngày
+      - name: Auto Keepalive
+        uses: entepotenz/keep-github-actions-alive-min-dependencies@v1
+        with:
+          COMMIT_MESSAGE: "chore: auto keepalive [skip ci]"
+          TIME_ELAPSED_THRESHOLD_IN_DAYS: 45
